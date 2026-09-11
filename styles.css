@@ -1,0 +1,28 @@
+body {
+    padding: 0;
+    margin: 0;
+    background-color: #EEE;
+    color: white;
+    text-align: center;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+}
+
+img {
+    display: none;
+}
+
+.canvas-container {
+    width: min(816px, 100vw);
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 100vh;
+    outline: none;
+    image-rendering: pixelated;
+}
