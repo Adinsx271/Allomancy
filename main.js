@@ -28,15 +28,18 @@ for (const state of ["idle", "run", "jump", "attack", "crouch", "hurt"]) {
 }
 
 const levels = loadLevels();
-const currentLevel = levels[0];
+let currentLevel = levels[0];
 const audioElement = document.getElementById("theAudio");
-audioElement.volume = 0.175;
+audioElement.volume = 0.01;
 
 const game = {
     canvas,
     context,
     state: AUTO_START ? "playing" : "title",
-    camera: { x: 0, y: currentLevel.length * TILE_SIZE - SCREEN_HEIGHT },
+    camera: {
+        x: 0,
+        y: Math.max(0, Math.min(HERO_SPAWN[1] - SCREEN_HEIGHT * 0.78, currentLevel.length * TILE_SIZE - SCREEN_HEIGHT)),
+    },
     points: 0,
     gravity: 900,
     hero: new Hero(...HERO_SPAWN),
@@ -44,7 +47,8 @@ const game = {
     metalRange: METAL_RANGE,
     metalActive: false,
     projectiles: [],
-    coinsCollected: 0,
+    levelIndex: 0,
+    coinInventory: 5,
     elapsedTime: 0,
     audio: audioElement,
     audioStarted: false,

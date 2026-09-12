@@ -36,16 +36,16 @@ class InputController {
             setGameState(game, game.state === "playing" ? "paused" : "playing");
         } else if (event.code === "KeyR" && game.state !== "title") {
             resetGame(game);
-        } else if (event.code === "KeyW" && game.state === "playing") {
+        } else if (event.code === "KeyW" && game.state === "playing" && game.hero.isGrounded) {
             game.hero.queueJump();
         } else if (event.code === "Space" && game.state === "playing") {
             game.hero.startAttack("melee");
         } else if (["ControlLeft", "ControlRight"].includes(event.code) && game.state === "playing") {
-            if (game.hero.startAttack("ranged")) fireCoin(game);
+            if (game.coinInventory > 0 && game.hero.startAttack("ranged")) fireCoin(game);
         } else if (event.code === "KeyQ" && game.state === "playing") {
-            this.abilityModes.iron = this.abilityModes.iron === "storing" ? "normal" : "storing";
-        } else if (event.code === "KeyE" && game.state === "playing") {
             this.abilityModes.iron = this.abilityModes.iron === "tapping" ? "normal" : "tapping";
+        } else if (event.code === "KeyE" && game.state === "playing") {
+            this.abilityModes.iron = this.abilityModes.iron === "storing" ? "normal" : "storing";
         } else if (event.code === "KeyC" && game.state === "playing") {
             this.abilityModes.steel = this.abilityModes.steel === "storing" ? "normal" : "storing";
         } else if (["ShiftLeft", "ShiftRight"].includes(event.code) && game.state === "playing") {
@@ -57,7 +57,7 @@ class InputController {
 
     onKeyUp(event) {
         this.pressedKeys.delete(event.code);
-        if (event.code === "KeyW" && game.hero) game.hero.cutJump();
+        if (event.code === "KeyW" && game.hero?.isGrounded) game.hero.cutJump();
     }
 
     update(hero, deltaTime) {
@@ -68,9 +68,18 @@ class InputController {
             storeSpeed: this.abilityModes.steel === "storing",
             tapSpeed: this.abilityModes.steel === "tapping",
         }, deltaTime);
-        const direction = Number(this.pressedKeys.has("KeyD")) - Number(this.pressedKeys.has("KeyA"));
+        if (this.abilityModes.iron === "storing" && hero.metalArts.ironReserve >= hero.metalArts.ironMax) {
+            this.abilityModes.iron = "normal";
+        }
+        if (this.abilityModes.steel === "storing" && hero.metalArts.steelReserve >= hero.metalArts.steelMax) {
+            this.abilityModes.steel = "normal";
+        }
+        const movementEnabled = hero.isGrounded;
+        const direction = movementEnabled
+            ? Number(this.pressedKeys.has("KeyD")) - Number(this.pressedKeys.has("KeyA"))
+            : 0;
         hero.applyMovementInput(direction, deltaTime);
-        hero.isCrouching = this.pressedKeys.has("KeyS");
+        hero.isCrouching = movementEnabled && this.pressedKeys.has("KeyS");
         hero.consumeBufferedJump();
         this.updateMetalTarget();
     }

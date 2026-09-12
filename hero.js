@@ -78,6 +78,7 @@ class Hero {
         if (controls.storeWeight && !controls.tapWeight) {
             arts.ironMode = "storing";
             arts.ironReserve = Math.min(arts.ironMax, arts.ironReserve + 20 * deltaTime);
+            if (arts.ironReserve >= arts.ironMax) arts.ironMode = "normal";
         } else if (controls.tapWeight && !controls.storeWeight && arts.ironReserve > 0) {
             arts.ironMode = "tapping";
             arts.ironReserve = Math.max(0, arts.ironReserve - 25 * deltaTime);
@@ -88,6 +89,7 @@ class Hero {
         if (controls.storeSpeed && !controls.tapSpeed) {
             arts.steelMode = "storing";
             arts.steelReserve = Math.min(arts.steelMax, arts.steelReserve + 25 * deltaTime);
+            if (arts.steelReserve >= arts.steelMax) arts.steelMode = "normal";
         } else if (controls.tapSpeed && !controls.storeSpeed && arts.steelReserve > 0) {
             arts.steelMode = "tapping";
             arts.steelReserve = Math.max(0, arts.steelReserve - 32 * deltaTime);

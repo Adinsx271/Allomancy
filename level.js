@@ -29,7 +29,7 @@ function drawLevelTiles(context, tiles, level, cameraX, cameraY) {
 
 function createTestLevel() {
     const width = 70;
-    const height = 18;
+    const height = 24;
     const level = Array.from({ length: height }, () => Array(width).fill(TILE_EMPTY));
     const fill = (row, start, end, tile = TILE_SOLID) => {
         for (let column = start; column <= end; column++) level[row][column] = tile;
@@ -38,6 +38,12 @@ function createTestLevel() {
     fill(17, 0, 12);
     fill(17, 18, 29);
     fill(17, 36, 69);
+    for (let row = 18; row <= 22; row++) {
+        fill(row, 0, 12);
+        fill(row, 18, 29);
+        fill(row, 36, 69);
+    }
+    fill(23, 0, 69);
     fill(14, 5, 8);
     fill(13, 21, 24);
     fill(14, 39, 43);
@@ -54,8 +60,21 @@ function createTestLevel() {
     return level;
 }
 
+function createEmptyLevel() {
+    const width = 48;
+    const height = 24;
+    const level = Array.from({ length: height }, () => Array(width).fill(TILE_EMPTY));
+    for (let row = 17; row < height; row++) {
+        for (let column = 0; column < width; column++) level[row][column] = TILE_SOLID;
+    }
+
+    level[12][25] = TILE_METAL;
+    level[16][45] = TILE_GOAL;
+    return level;
+}
+
 function loadLevels() {
-    return [createTestLevel()];
+    return [createTestLevel(), createEmptyLevel()];
 }
 
 let cachedMetadataLevel = null;
@@ -79,7 +98,8 @@ function getLevelMetadata(level) {
 }
 
 function isSolidTile(level, column, row) {
-    return row >= 0 && row < level.length && column >= 0 && column < level[0].length && level[row][column] !== TILE_EMPTY;
+    if (column < 0 || column >= level[0].length) return true;
+    return row >= 0 && row < level.length && level[row][column] !== TILE_EMPTY;
 }
 
 function isSpriteGrounded(sprite, level) {
