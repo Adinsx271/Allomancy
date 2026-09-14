@@ -1,0 +1,35 @@
+{
+    "name": "Leere Ebene",
+    "width": 48,
+    "height": 24,
+    "spawn": [
+        6.5,
+        17
+    ],
+    "areas": [
+        {
+            "type": "solid",
+            "x": 0,
+            "y": 17,
+            "width": 48,
+            "height": 7,
+            "tile": 210
+        }
+    ],
+    "objects": [
+        {
+            "id": "metal-1",
+            "type": "metal",
+            "x": 25,
+            "y": 12,
+            "tile": 365
+        },
+        {
+            "id": "goal-1",
+            "type": "goal",
+            "x": 45,
+            "y": 16,
+            "tile": 428
+        }
+    ]
+}

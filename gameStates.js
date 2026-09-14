@@ -1,56 +1,43 @@
-const COIN_PHYSICS = Object.freeze({
-    allomanticMass: 0.5,
-    nearAcceleration: 1500,
-    rangeAccelerationLoss: 630,
-    maxAllomanticSpeed: 850,
-    wallBounce: 0.12,
-    minimumBounceSpeed: 55,
-    maxCollisionStep: 8,
-    contactProbe: 0.5,
-});
+import { drawProjectiles, updateProjectiles } from "./coins.js";
+import { SCREEN_HEIGHT, SCREEN_WIDTH, TILE_SIZE, GAMEPLAY } from "./gameConfig.js";
+import { currentLevel, levels, setCurrentLevel, setGameState } from "./gameRuntime.js";
+import { Hero } from "./hero.js";
+import {
+    drawLevelObjects,
+    drawLevelTiles,
+    getLevelMetadata,
+    isSpriteGrounded,
+    loadedLevelManifest,
+    resetLevelObjects,
+    updateLevelObjects,
+} from "./level.js";
+import { LevelCore } from "./levelCore.js";
+import { drawMetalLinks, getMetalMode, updateMetalInteraction } from "./metal.js";
 
-function updateGame(game, deltaTime) {
+export function updateGame(game, deltaTime) {
     game.elapsedTime += deltaTime;
     game.hero.beginStep(deltaTime, currentLevel);
     game.input.update(game.hero, deltaTime);
 
     const metadata = getLevelMetadata(currentLevel);
-    const metalTargets = getMetalTargets(game);
-    const mode = getMetalMode(game.hero);
-    const selectedTarget = game.selectedMetalIndex === null ? null : metalTargets[game.selectedMetalIndex];
-    if (game.input.pointerDown && selectedTarget?.type === "coin") {
-        if (isCoinAnchoredForForce(selectedTarget.coin, game.hero, mode)) {
-            selectedTarget.coin.pinnedThisStep = true;
-            game.metalActive = game.hero.applyMetalForce(
-                selectedTarget.position,
-                mode,
-                deltaTime,
-                game.metalRange,
-            );
-        } else {
-            game.metalActive = applyAllomancyToCoin(selectedTarget.coin, game.hero, mode, deltaTime, game.metalRange);
-        }
-    } else {
-        game.metalActive = game.input.pointerDown && game.hero.applyMetalForce(
-            selectedTarget?.position,
-            mode,
-            deltaTime,
-            game.metalRange,
-        );
-    }
+    updateMetalInteraction(game, deltaTime);
     game.hero.update(deltaTime, currentLevel, game.gravity);
     updateProjectiles(game, deltaTime);
+    updateLevelObjects(game);
+    if (game.state !== "playing") return;
 
     if (game.hero.globalPos[1] > currentLevel.length * TILE_SIZE + 160) {
         setGameState(game, "gameOver");
         return;
     }
-    if (metadata.goalPosition && Math.hypot(
-        game.hero.globalPos[0] - metadata.goalPosition[0],
-        game.hero.globalPos[1] - game.hero.size[1] / 2 - metadata.goalPosition[1],
-    ) < 58) {
-        if (game.levelIndex < levels.length - 1) {
-            enterLevel(game, game.levelIndex + 1);
+    const reachedGoal = metadata.goals.find((goal) => Math.hypot(
+        game.hero.globalPos[0] - goal.position[0],
+        game.hero.globalPos[1] - game.hero.size[1] / 2 - goal.position[1],
+    ) < 58);
+    if (reachedGoal) {
+        const transition = LevelCore.resolveGoalTransition(reachedGoal, loadedLevelManifest);
+        if (transition.kind === "level") {
+            enterLevel(game, transition.levelIndex);
             return;
         }
         game.points = Math.max(100, 1500 - Math.floor(game.elapsedTime * 10));
@@ -74,7 +61,7 @@ function updateCamera(game, deltaTime) {
     game.camera.y += (targetY - game.camera.y) * smoothing;
 }
 
-function renderCurrentState(game) {
+export function renderCurrentState(game) {
     if (game.state === "title") {
         renderTitleScreen(game);
         return;
@@ -88,16 +75,17 @@ function renderCurrentState(game) {
 function renderGame(game) {
     const { context } = game;
     context.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    drawParallax(context, game.camera.x, game.camera.y);
-    drawLevelTiles(context, tiles, currentLevel, game.camera.x, game.camera.y);
-    drawGoal(context, game);
+    drawParallax(context, game.layers, game.camera.x, game.camera.y);
+    drawLevelTiles(context, game.tiles, currentLevel, game.camera.x, game.camera.y);
+    drawLevelObjects(context, game.tiles, currentLevel, game.camera.x, game.camera.y);
+    drawGoals(context, game);
     drawMetalLinks(context, game);
     drawProjectiles(context, game);
-    game.hero.draw(context, heroSprites);
+    game.hero.draw(context, game.heroSprites);
     drawHud(context, game);
 }
 
-function drawParallax(context, cameraX, cameraY) {
+function drawParallax(context, layers, cameraX, cameraY) {
     context.drawImage(layers[0], 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     for (let index = 1; index < layers.length; index++) {
         const parallaxX = -((cameraX * (0.015 * Math.pow(2, index))) % SCREEN_WIDTH);
@@ -107,43 +95,16 @@ function drawParallax(context, cameraX, cameraY) {
     }
 }
 
-function drawGoal(context, game) {
-    const goal = getLevelMetadata(currentLevel).goalPosition;
-    if (!goal) return;
-    const x = goal[0] - game.camera.x;
-    const y = goal[1] - game.camera.y;
-    context.save();
-    context.strokeStyle = "#f7e36d";
-    context.lineWidth = 3;
-    context.shadowColor = "#f7e36d";
-    context.shadowBlur = 12;
-    context.strokeRect(x - 17, y - 17, 34, 34);
-    context.restore();
-}
-
-function drawMetalLinks(context, game) {
-    const mode = getMetalMode(game.hero);
-    if (!mode) return;
-    const metals = getMetalTargets(game).map((target) => target.position);
-    const centerX = game.hero.globalPos[0];
-    const centerY = game.hero.globalPos[1] - game.hero.size[1] / 2;
-    for (let index = 0; index < metals.length; index++) {
-        const metal = metals[index];
-        const distance = Math.hypot(metal[0] - centerX, metal[1] - centerY);
-        const selected = index === game.selectedMetalIndex;
-        const inRange = distance <= game.metalRange;
+function drawGoals(context, game) {
+    for (const goal of getLevelMetadata(currentLevel).goals) {
+        const x = goal.position[0] - game.camera.x;
+        const y = goal.position[1] - game.camera.y;
         context.save();
-        context.globalAlpha = inRange ? (selected ? 1 : 0.38) : 0.1;
-        context.strokeStyle = mode === "pull" ? "#52b7ff" : "#ff6f61";
-        context.fillStyle = context.strokeStyle;
-        context.lineWidth = selected ? 4 : 1.5;
-        context.beginPath();
-        context.moveTo(centerX - game.camera.x, centerY - game.camera.y);
-        context.lineTo(metal[0] - game.camera.x, metal[1] - game.camera.y);
-        context.stroke();
-        context.beginPath();
-        context.arc(metal[0] - game.camera.x, metal[1] - game.camera.y, selected ? 9 : 5, 0, Math.PI * 2);
-        context.fill();
+        context.strokeStyle = "#f7e36d";
+        context.lineWidth = 3;
+        context.shadowColor = "#f7e36d";
+        context.shadowBlur = 12;
+        context.strokeRect(x - 17, y - 17, 34, 34);
         context.restore();
     }
 }
@@ -163,7 +124,9 @@ function drawHud(context, game) {
     context.fillStyle = "#d7dbe7";
     context.font = "13px system-ui, sans-serif";
     context.fillText(`MÜNZEN: ${game.coinInventory}`, 24, 84);
-    const targetLabel = !game.input.pointerDown ? "MT4/MT5 über Metall halten" : game.metalActive ? "Kraft aktiv" : "Ziel außer Reichweite";
+    const targetLabel = !game.input.pointerDown
+        ? "MT4/MT5 über Metall halten"
+        : game.metalActive ? "Kraft aktiv" : `Kein Ziel im ${game.metalAimTolerance}°-Zielkegel`;
     context.fillText(targetLabel, 24, 106);
     const arts = game.hero.metalArts;
     const ironMode = arts.ironMode === "storing" ? "LEICHT" : arts.ironMode === "tapping" ? "SCHWER" : "NORMAL";
@@ -176,7 +139,7 @@ function drawHud(context, game) {
     context.fillStyle = "#f2f2f2";
     context.fillText("A/D Laufen · W Springen · Leertaste Nahkampf · Strg Münze", SCREEN_WIDTH - 384, 32);
     context.fillText("MT4 Ziehen · MT5 Stoßen · Q/E Gewicht umschalten", SCREEN_WIDTH - 384, 52);
-    context.fillText("C/Shift Tempo umschalten · F Weißblech umschalten", SCREEN_WIDTH - 384, 72);
+    context.fillText("C/Shift Tempo umschalten · 1 Weißblech umschalten", SCREEN_WIDTH - 384, 72);
     context.fillText("Esc Pause · R Neustart", SCREEN_WIDTH - 384, 92);
     context.restore();
 }
@@ -194,7 +157,7 @@ function drawResourceBar(context, x, y, width, value, maximum, color, label) {
 function renderTitleScreen(game) {
     const { context } = game;
     context.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    context.drawImage(titleScreen, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    context.drawImage(game.titleScreen, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     context.fillStyle = "rgba(8, 10, 18, 0.58)";
     context.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     context.textAlign = "center";
@@ -211,7 +174,7 @@ function renderTitleScreen(game) {
     context.font = "16px system-ui, sans-serif";
     context.fillText("Leertaste: Nahkampf · Strg: Münze · MT4: Ziehen · MT5: Stoßen", SCREEN_WIDTH / 2, 334);
     context.font = "14px system-ui, sans-serif";
-    context.fillText("Q/E: Gewicht-Toggle · C/Shift: Tempo-Toggle · F: Weißblech-Toggle", SCREEN_WIDTH / 2, 365);
+    context.fillText("Q/E: Gewicht · C/Shift: Tempo · 1: Weißblech", SCREEN_WIDTH / 2, 365);
     context.textAlign = "start";
 }
 
@@ -228,257 +191,35 @@ function renderMessageOverlay(context, title, subtitle) {
     context.textAlign = "start";
 }
 
-function setGameState(game, state) {
-    game.state = state;
-    if (["paused", "gameOver", "complete", "title"].includes(state)) game.audio.pause();
-    if (state === "playing" && game.audioStarted) game.audio.play().catch(() => {});
-}
-
-function getMetalTargets(game) {
-    const fixedTargets = getLevelMetadata(currentLevel).metalPositions.map((position) => ({
-        position,
-        type: "block",
-    }));
-    const coinTargets = game.projectiles.map((coin) => ({
-        position: [coin.x, coin.y],
-        type: "coin",
-        coin,
-    }));
-    return [...fixedTargets, ...coinTargets];
-}
-
-function fireCoin(game) {
-    if (game.coinInventory <= 0) return false;
-    game.coinInventory -= 1;
-    const cursor = game.input.getCursorWorldPosition();
-    const heroCenterY = game.hero.globalPos[1] - game.hero.size[1] * 0.58;
-    let directionX = game.hero.looksRight ? 1 : -1;
-    let directionY = 0;
-    if (cursor) {
-        const deltaX = cursor[0] - game.hero.globalPos[0];
-        const deltaY = cursor[1] - heroCenterY;
-        const distance = Math.hypot(deltaX, deltaY);
-        if (distance > 1) {
-            directionX = deltaX / distance;
-            directionY = deltaY / distance;
-            if (Math.abs(directionX) > 0.05) game.hero.looksRight = directionX > 0;
-        }
-    }
-    const startX = game.hero.globalPos[0] + directionX * 20;
-    const startY = game.hero.globalPos[1] - game.hero.size[1] * 0.58;
-    game.projectiles.push({
-        x: startX,
-        y: startY,
-        startX,
-        startY,
-        velocityX: directionX * 540 + game.hero.vel[0] * 0.25,
-        velocityY: directionY * 540,
-        directionX,
-        directionY,
-        rotation: 0,
-        radius: 6,
-        allomanticMass: COIN_PHYSICS.allomanticMass,
-        resting: false,
-        contactFloor: false,
-        contactCeiling: false,
-        pinnedThisStep: false,
-        allomancyActiveThisStep: false,
-        age: 0,
-    });
-    return true;
-}
-
-function updateProjectiles(game, deltaTime) {
-    game.projectiles = game.projectiles.filter((coin) => {
-        coin.age += deltaTime;
-        if (coin.pinnedThisStep) {
-            coin.velocityX = 0;
-            coin.velocityY = 0;
-            coin.resting = true;
-            coin.pinnedThisStep = false;
-        } else {
-            if (!coin.allomancyActiveThisStep) coin.velocityY += game.gravity * deltaTime;
-            moveCoinWithTileCollisions(coin, deltaTime);
-        }
-        coin.allomancyActiveThisStep = false;
-        coin.rotation += 18 * deltaTime;
-        if (coin.age > 0.25 && coinTouchesHero(coin, game.hero)) {
-            game.coinInventory += 1;
-            return false;
-        }
-        return true;
-    });
-}
-
-function isCoinAnchoredForForce(coin, hero, mode) {
-    if (!mode) return false;
-    const heroCenterY = hero.globalPos[1] - hero.size[1] / 2;
-    const deltaX = hero.globalPos[0] - coin.x;
-    const deltaY = heroCenterY - coin.y;
-    const distance = Math.hypot(deltaX, deltaY);
-    if (distance < 1) return false;
-    const coinForceY = deltaY / distance * (mode === "pull" ? 1 : -1);
-    return (coin.contactFloor && coinForceY > 0.05) ||
-        (coin.contactCeiling && coinForceY < -0.05);
-}
-
-function applyAllomancyToCoin(coin, hero, mode, deltaTime, range) {
-    if (!mode) return false;
-    const heroCenterY = hero.globalPos[1] - hero.size[1] / 2;
-    let deltaX = hero.globalPos[0] - coin.x;
-    let deltaY = heroCenterY - coin.y;
-    const distance = Math.hypot(deltaX, deltaY);
-    if (distance < 1 || distance > range) return false;
-    deltaX /= distance;
-    deltaY /= distance;
-    const direction = mode === "pull" ? 1 : -1;
-    const distanceRatio = distance / range;
-    const acceleration = (
-        COIN_PHYSICS.nearAcceleration - COIN_PHYSICS.rangeAccelerationLoss * distanceRatio
-    ) / coin.allomanticMass;
-    coin.velocityX += deltaX * direction * acceleration * deltaTime;
-    coin.velocityY += deltaY * direction * acceleration * deltaTime;
-    coin.allomancyActiveThisStep = true;
-    const speed = Math.hypot(coin.velocityX, coin.velocityY);
-    const maxSpeed = COIN_PHYSICS.maxAllomanticSpeed;
-    if (speed > maxSpeed) {
-        coin.velocityX = coin.velocityX / speed * maxSpeed;
-        coin.velocityY = coin.velocityY / speed * maxSpeed;
-    }
-    coin.resting = false;
-    return true;
-}
-
-function coinTouchesHero(coin, hero) {
-    const closestX = Math.max(hero.globalPos[0] - hero.size[0] / 2, Math.min(coin.x, hero.globalPos[0] + hero.size[0] / 2));
-    const closestY = Math.max(hero.globalPos[1] - hero.size[1], Math.min(coin.y, hero.globalPos[1]));
-    return Math.hypot(coin.x - closestX, coin.y - closestY) <= coin.radius + 3;
-}
-
-function moveCoinWithTileCollisions(coin, deltaTime) {
-    const distance = Math.max(Math.abs(coin.velocityX), Math.abs(coin.velocityY)) * deltaTime;
-    const stepCount = Math.max(1, Math.ceil(distance / COIN_PHYSICS.maxCollisionStep));
-    const stepTime = deltaTime / stepCount;
-    for (let step = 0; step < stepCount; step++) moveCoinCollisionStep(coin, stepTime);
-    updateCoinContacts(coin);
-}
-
-function moveCoinCollisionStep(coin, deltaTime) {
-    const radius = coin.radius;
-    let targetX = coin.x + coin.velocityX * deltaTime;
-    const horizontalColumn = Math.floor((targetX + Math.sign(coin.velocityX) * radius) / TILE_SIZE);
-    const firstRow = Math.floor((coin.y - radius + 1) / TILE_SIZE);
-    const lastRow = Math.floor((coin.y + radius - 1) / TILE_SIZE);
-    let hitWall = false;
-    for (let row = firstRow; row <= lastRow; row++) {
-        if (!isSolidTile(currentLevel, horizontalColumn, row)) continue;
-        targetX = coin.velocityX > 0
-            ? horizontalColumn * TILE_SIZE - radius
-            : (horizontalColumn + 1) * TILE_SIZE + radius;
-        hitWall = true;
-    }
-    coin.x = targetX;
-    if (hitWall) {
-        coin.velocityX = Math.abs(coin.velocityX) < COIN_PHYSICS.minimumBounceSpeed
-            ? 0
-            : coin.velocityX * -COIN_PHYSICS.wallBounce;
-    }
-
-    let targetY = coin.y + coin.velocityY * deltaTime;
-    const verticalRow = Math.floor((targetY + Math.sign(coin.velocityY) * radius) / TILE_SIZE);
-    const firstColumn = Math.floor((coin.x - radius + 1) / TILE_SIZE);
-    const lastColumn = Math.floor((coin.x + radius - 1) / TILE_SIZE);
-    let hitFloor = false;
-    let hitCeiling = false;
-    for (let column = firstColumn; column <= lastColumn; column++) {
-        if (!isSolidTile(currentLevel, column, verticalRow)) continue;
-        if (coin.velocityY > 0) {
-            targetY = verticalRow * TILE_SIZE - radius;
-            hitFloor = true;
-        } else {
-            targetY = (verticalRow + 1) * TILE_SIZE + radius;
-            hitCeiling = true;
-        }
-    }
-    coin.y = targetY;
-    if (hitFloor) {
-        coin.velocityX = 0;
-        coin.velocityY = 0;
-    }
-    if (hitCeiling) coin.velocityY = 0;
-    coin.resting = hitFloor && coin.velocityX === 0 && coin.velocityY === 0;
-}
-
-function updateCoinContacts(coin) {
-    const radius = coin.radius;
-    const firstColumn = Math.floor((coin.x - radius + 1) / TILE_SIZE);
-    const lastColumn = Math.floor((coin.x + radius - 1) / TILE_SIZE);
-    const floorRow = Math.floor((coin.y + radius + COIN_PHYSICS.contactProbe) / TILE_SIZE);
-    const ceilingRow = Math.floor((coin.y - radius - COIN_PHYSICS.contactProbe) / TILE_SIZE);
-    coin.contactFloor = false;
-    coin.contactCeiling = false;
-    for (let column = firstColumn; column <= lastColumn; column++) {
-        coin.contactFloor ||= isSolidTile(currentLevel, column, floorRow);
-        coin.contactCeiling ||= isSolidTile(currentLevel, column, ceilingRow);
-    }
-    coin.resting = coin.contactFloor && coin.velocityX === 0 && coin.velocityY === 0;
-}
-
-function drawProjectiles(context, game) {
-    for (const coin of game.projectiles) {
-        const x = coin.x - game.camera.x;
-        const y = coin.y - game.camera.y;
-        context.save();
-        const trailX = x - coin.directionX * 30;
-        const trailY = y - coin.directionY * 30;
-        const trail = context.createLinearGradient(x, y, trailX, trailY);
-        trail.addColorStop(0, "rgba(92, 195, 255, 0.9)");
-        trail.addColorStop(1, "rgba(92, 195, 255, 0)");
-        context.strokeStyle = trail;
-        context.lineWidth = 3;
-        context.beginPath();
-        context.moveTo(x, y);
-        context.lineTo(trailX, trailY);
-        context.stroke();
-        context.translate(x, y);
-        context.scale(Math.max(0.18, Math.abs(Math.cos(coin.rotation))), 1);
-        context.fillStyle = "#d9a928";
-        context.strokeStyle = "#fff1a6";
-        context.lineWidth = 1.5;
-        context.beginPath();
-        context.arc(0, 0, 6, 0, Math.PI * 2);
-        context.fill();
-        context.stroke();
-        context.restore();
-    }
-}
-
-function startGame(game) {
+export function startGame(game) {
     resetGame(game);
 }
 
 function enterLevel(game, levelIndex) {
+    if (levelIndex < 0 || levelIndex >= levels.length) throw new Error(`Ungültiger Levelindex: ${levelIndex}`);
     game.input.releaseMetalTarget();
     game.input.resetAbilityToggles();
     game.levelIndex = levelIndex;
-    currentLevel = levels[levelIndex];
-    game.hero = new Hero(...HERO_SPAWN);
+    setCurrentLevel(levels[levelIndex]);
+    resetLevelObjects(currentLevel);
+    const spawnPosition = getLevelMetadata(currentLevel).spawnPosition;
+    game.hero = new Hero(...spawnPosition);
     game.selectedMetalIndex = null;
     game.metalActive = false;
     game.projectiles = [];
     game.camera.x = 0;
     game.camera.y = Math.max(
         0,
-        Math.min(HERO_SPAWN[1] - SCREEN_HEIGHT * 0.78, currentLevel.length * TILE_SIZE - SCREEN_HEIGHT),
+        Math.min(spawnPosition[1] - SCREEN_HEIGHT * 0.78, currentLevel.length * TILE_SIZE - SCREEN_HEIGHT),
     );
     game.hero.isGrounded = isSpriteGrounded(game.hero, currentLevel);
     game.hero.adjustRenderPos(game.camera.x, game.camera.y);
 }
 
-function resetGame(game) {
+export function resetGame(game) {
     game.input.releaseMetalTarget();
-    enterLevel(game, 0);
-    game.coinInventory = 5;
+    enterLevel(game, game.startLevelIndex);
+    game.coinInventory = GAMEPLAY.startingCoins;
     game.points = 0;
     game.elapsedTime = 0;
     setGameState(game, "playing");

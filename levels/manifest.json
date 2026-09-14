@@ -1,0 +1,7 @@
+{
+    "startLevel": "level-01.json",
+    "levels": [
+        "level-01.json",
+        "level-02.json"
+    ]
+}

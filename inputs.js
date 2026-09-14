@@ -1,4 +1,10 @@
-class InputController {
+import { fireCoin } from "./coins.js";
+import { game, setGameState } from "./gameRuntime.js";
+import { findClosestTargetInCone } from "./MathLib.js";
+import { getMetalMode, getMetalTargets } from "./metal.js";
+import { resetGame, startGame } from "./gameStates.js";
+
+export class InputController {
     constructor(canvas) {
         this.pressedKeys = new Set();
         this.pointerDown = false;
@@ -16,14 +22,12 @@ class InputController {
         window.addEventListener("pointercancel", () => this.releaseMetalTarget());
         canvas.addEventListener("pointerdown", (event) => this.onPointerDown(event));
         canvas.addEventListener("pointermove", (event) => this.onPointerMove(event));
-        canvas.addEventListener("auxclick", (event) => {
-            if ([3, 4].includes(event.button)) event.preventDefault();
-        });
+        canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     }
 
     onKeyDown(event) {
         const controlledKeys = [
-            "KeyA", "KeyC", "KeyD", "KeyE", "KeyF", "KeyQ", "KeyR", "KeyS", "KeyW",
+            "KeyA", "KeyC", "KeyD", "KeyE", "KeyQ", "KeyR", "KeyS", "KeyW", "Digit1",
             "Space", "ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "Enter", "Escape",
         ];
         if (controlledKeys.includes(event.code)) event.preventDefault();
@@ -50,7 +54,7 @@ class InputController {
             this.abilityModes.steel = this.abilityModes.steel === "storing" ? "normal" : "storing";
         } else if (["ShiftLeft", "ShiftRight"].includes(event.code) && game.state === "playing") {
             this.abilityModes.steel = this.abilityModes.steel === "tapping" ? "normal" : "tapping";
-        } else if (event.code === "KeyF" && game.state === "playing") {
+        } else if (event.code === "Digit1" && game.state === "playing") {
             this.abilityModes.pewter = !this.abilityModes.pewter;
         }
     }
@@ -85,12 +89,12 @@ class InputController {
     }
 
     onPointerDown(event) {
-        if (![3, 4].includes(event.button) || game.state !== "playing") return;
+        if (![0, 2].includes(event.button) || game.state !== "playing") return;
         event.preventDefault();
         this.pointerDown = true;
         this.metalButton = event.button;
-        game.hero.inputFlags.pullMetal = event.button === 3;
-        game.hero.inputFlags.pushMetal = event.button === 4;
+        game.hero.inputFlags.pullMetal = event.button === 2;
+        game.hero.inputFlags.pushMetal = event.button === 0;
         game.canvas.setPointerCapture?.(event.pointerId);
         this.storePointerPosition(event);
         this.updateMetalTarget();
@@ -124,16 +128,23 @@ class InputController {
         const cursorX = this.pointerCanvasPosition[0] + game.camera.x;
         const cursorY = this.pointerCanvasPosition[1] + game.camera.y;
         const metals = getMetalTargets(game).map((target) => target.position);
-        let closestIndex = null;
-        let closestDistance = Infinity;
-        for (let index = 0; index < metals.length; index++) {
-            const distance = Math.hypot(metals[index][0] - cursorX, metals[index][1] - cursorY);
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closestIndex = index;
-            }
-        }
-        game.selectedMetalIndex = closestIndex;
+        const heroCenter = [
+            game.hero.globalPos[0],
+            game.hero.globalPos[1] - game.hero.size[1] / 2,
+        ];
+        const targetsInRange = metals.map((position, index) => ({ position, index })).filter(
+            (target) => Math.hypot(
+                target.position[0] - heroCenter[0],
+                target.position[1] - heroCenter[1],
+            ) <= game.metalRange,
+        );
+        const coneIndex = findClosestTargetInCone(
+            heroCenter,
+            [cursorX, cursorY],
+            targetsInRange.map((target) => target.position),
+            game.metalAimTolerance,
+        );
+        game.selectedMetalIndex = coneIndex === null ? null : targetsInRange[coneIndex].index;
     }
 
     releaseMetalTarget() {
@@ -165,10 +176,4 @@ class InputController {
             this.pointerCanvasPosition[1] + game.camera.y,
         ];
     }
-}
-
-function getMetalMode(hero) {
-    if (hero.inputFlags.pullMetal) return "pull";
-    if (hero.inputFlags.pushMetal) return "push";
-    return null;
 }

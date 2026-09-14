@@ -1,4 +1,4 @@
-function getAngleFromPoints(x1, y1, x2, y2) {
+export function getAngleFromPoints(x1, y1, x2, y2) {
     // Calculate the angle in radians using Math.atan2
     let angleRadians = Math.atan2(y2 - y1, x2 - x1);
     
@@ -17,15 +17,15 @@ function getAngleFromPoints(x1, y1, x2, y2) {
     return angleDegrees;
 }
 
-function getSmallestAngleDifference(firstAngle, secondAngle) {
+export function getSmallestAngleDifference(firstAngle, secondAngle) {
     return Math.abs(((firstAngle - secondAngle + 180) % 360 + 360) % 360 - 180);
 }
 
-function degreesToRadians(angleDegrees) {
+export function degreesToRadians(angleDegrees) {
     return angleDegrees * (Math.PI / 180);
 }
 
-function findClosestAngleIndex(cursorAngle, angles, angleMargin = 10) {
+export function findClosestAngleIndex(cursorAngle, angles, angleMargin = 10) {
     let closestIndex = null;
     let closestDifference = Infinity;
     for (let index = 0; index < angles.length; index++) {
@@ -38,11 +38,20 @@ function findClosestAngleIndex(cursorAngle, angles, angleMargin = 10) {
     return closestDifference <= angleMargin ? closestIndex : null;
 }
 
-if (typeof module !== "undefined") {
-    module.exports = {
-        degreesToRadians,
-        findClosestAngleIndex,
-        getAngleFromPoints,
-        getSmallestAngleDifference,
-    };
+export function findClosestTargetInCone(origin, cursor, targets, angleMargin = 30) {
+    const cursorAngle = getAngleFromPoints(origin[0], origin[1], cursor[0], cursor[1]);
+    if (cursorAngle === null) return null;
+    let closestIndex = null;
+    let closestCursorDistance = Infinity;
+    for (let index = 0; index < targets.length; index++) {
+        const target = targets[index];
+        const targetAngle = getAngleFromPoints(origin[0], origin[1], target[0], target[1]);
+        if (targetAngle === null || getSmallestAngleDifference(targetAngle, cursorAngle) > angleMargin) continue;
+        const cursorDistance = Math.hypot(target[0] - cursor[0], target[1] - cursor[1]);
+        if (cursorDistance < closestCursorDistance) {
+            closestCursorDistance = cursorDistance;
+            closestIndex = index;
+        }
+    }
+    return closestIndex;
 }

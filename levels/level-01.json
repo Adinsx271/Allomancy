@@ -1,0 +1,26 @@
+{
+    "name": "Testlevel",
+    "width": 70,
+    "height": 24,
+    "spawn": [6.5, 17],
+    "areas": [
+        { "type": "solid", "x": 0, "y": 17, "width": 13, "height": 6 },
+        { "type": "solid", "x": 18, "y": 17, "width": 12, "height": 6 },
+        { "type": "solid", "x": 36, "y": 17, "width": 34, "height": 6 },
+        { "type": "solid", "x": 0, "y": 23, "width": 70, "height": 1 },
+        { "type": "solid", "x": 5, "y": 14, "width": 4, "height": 1 },
+        { "type": "solid", "x": 21, "y": 13, "width": 4, "height": 1 },
+        { "type": "solid", "x": 39, "y": 14, "width": 5, "height": 1 },
+        { "type": "solid", "x": 47, "y": 11, "width": 5, "height": 1 },
+        { "type": "solid", "x": 57, "y": 14, "width": 4, "height": 1 }
+    ],
+    "objects": [
+        { "id": "metal-1", "type": "metal", "x": 15, "y": 11 },
+        { "id": "metal-2", "type": "metal", "x": 18, "y": 15 },
+        { "id": "metal-3", "type": "metal", "x": 32, "y": 10 },
+        { "id": "metal-4", "type": "metal", "x": 36, "y": 15 },
+        { "id": "metal-5", "type": "metal", "x": 46, "y": 8 },
+        { "id": "metal-6", "type": "metal", "x": 55, "y": 13 },
+        { "id": "goal-1", "type": "goal", "x": 66, "y": 16, "targetLevel": "level-02.json" }
+    ]
+}
